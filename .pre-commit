@@ -1,0 +1,31 @@
+#!/bin/sh
+
+if [ -e '/usr/local/bin/git-annex' ]; then
+  let MAX=1*1024*1024  # 1048576 == 1 MB
+  if [ ! -d '.git/annex/' ]; then
+    git annex init &> /dev/null
+  fi
+  if git rev-parse --verify HEAD &> /dev/null; then
+    against=HEAD
+  else
+    # Initial commit: diff against an empty tree object
+    against=$(git hash-object -t tree /dev/null)
+  fi
+  git diff-index --cached $against | \
+    tr '\t' ' ' | \
+    cut -d ' ' -f4,6- | \
+    while read line; do
+      sha1=$(cut -d ' ' -f1 <<< "$line")
+      if [ "$sha1" == "0000000000000000000000000000000000000000" ]; then
+        continue
+      fi
+      size=$(git cat-file -s "$sha1")
+      if [ $size -ge $MAX ]; then
+        file=$(cut -d ' ' -f2- <<< "$line")
+        git update-index --force-remove "$file"
+        git annex add "$file"
+        killall -TERM Finder
+      fi
+  done
+  git annex pre-commit .
+fi
